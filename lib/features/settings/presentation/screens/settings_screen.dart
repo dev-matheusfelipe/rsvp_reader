@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../library_sync/presentation/widgets/sync_settings_section.dart';
 import '../../../rsvp_reader/presentation/providers/display_settings_provider.dart';
 import '../../../rsvp_reader/presentation/widgets/display_settings_panel.dart';
 
@@ -28,6 +29,10 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const DisplaySettingsPanel(),
+            const SizedBox(height: 24),
+            Divider(color: settings.wordColor.withAlpha(40), height: 1),
+            const SizedBox(height: 16),
+            const SyncSettingsSection(),
             const SizedBox(height: 24),
             Divider(color: settings.wordColor.withAlpha(40), height: 1),
             const SizedBox(height: 16),

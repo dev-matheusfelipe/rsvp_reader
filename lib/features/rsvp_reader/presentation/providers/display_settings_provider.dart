@@ -2,14 +2,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/constants/app_constants.dart';
+import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 import '../../domain/entities/display_settings.dart';
 
 const _prefix = 'display_';
 
 class DisplaySettingsNotifier extends StateNotifier<DisplaySettings> {
   final SharedPreferencesAsync _prefs;
+  final Ref? _ref;
 
-  DisplaySettingsNotifier(this._prefs) : super(const DisplaySettings()) {
+  DisplaySettingsNotifier(this._prefs, [this._ref])
+      : super(const DisplaySettings()) {
     load();
   }
 
@@ -49,6 +52,22 @@ class DisplaySettingsNotifier extends StateNotifier<DisplaySettings> {
   Future<void> update(DisplaySettings Function(DisplaySettings) updater) async {
     state = updater(state);
     await _save();
+    _notifySyncChanged();
+  }
+
+  /// Apply settings coming from a sync pull. Persists to SharedPreferences
+  /// without re-triggering a sync push (the remote already has these values).
+  Future<void> applyFromRemote(DisplaySettings synced) async {
+    state = synced;
+    await _save();
+  }
+
+  void _notifySyncChanged() {
+    final ref = _ref;
+    if (ref == null) return;
+    final notifier = ref.read(librarySyncProvider.notifier);
+    notifier.markSettingsDirty();
+    notifier.schedulePush();
   }
 
   Future<void> _save() async {
@@ -75,5 +94,5 @@ class DisplaySettingsNotifier extends StateNotifier<DisplaySettings> {
 
 final displaySettingsProvider =
     StateNotifierProvider<DisplaySettingsNotifier, DisplaySettings>((ref) {
-  return DisplaySettingsNotifier(SharedPreferencesAsync());
+  return DisplaySettingsNotifier(SharedPreferencesAsync(), ref);
 });

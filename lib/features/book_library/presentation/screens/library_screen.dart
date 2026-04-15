@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../database/app_database.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../../../epub_import/presentation/providers/epub_import_provider.dart';
+import '../../../library_sync/presentation/providers/library_sync_provider.dart';
+import '../../../library_sync/presentation/providers/sync_config_provider.dart';
 import '../providers/book_library_provider.dart';
 import '../widgets/book_card.dart';
 
@@ -16,6 +18,23 @@ class LibraryScreen extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final libraryAsync = ref.watch(categorizedLibraryProvider);
     final importState = ref.watch(epubImportProvider);
+
+    // Show snackbar if sync fails (only transitions into error).
+    ref.listen<LibrarySyncState>(librarySyncProvider, (prev, next) {
+      if (next.stage == SyncStage.error &&
+          prev?.stage != SyncStage.error &&
+          next.errorMessage != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              content: Text(l10n.syncFailed(next.errorMessage!)),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+      }
+    });
 
     // React to import state changes: navigate on success, show snackbar on error.
     ref.listen(epubImportProvider, (prev, next) {
@@ -36,6 +55,8 @@ class LibraryScreen extends ConsumerWidget {
       }
     });
 
+    final syncState = ref.watch(librarySyncProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.appTitle),
@@ -45,37 +66,58 @@ class LibraryScreen extends ConsumerWidget {
             onPressed: () => context.push('/settings'),
           ),
         ],
+        bottom: syncState.isImporting
+            ? _ImportProgressBar(
+                current: syncState.importCurrent ?? 0,
+                total: syncState.importTotal ?? 0,
+                fileName: syncState.importFileName ?? '',
+                l10n: l10n,
+              )
+            : null,
       ),
       body: libraryAsync.when(
         data: (categorized) {
-          if (categorized.isEmpty) {
-            return _buildEmptyState(context, l10n);
-          }
-          return CustomScrollView(
-            slivers: [
-              _buildSection(
-                context,
-                ref,
-                l10n,
-                title: l10n.librarySectionInProgress,
-                books: categorized.inProgress,
-              ),
-              _buildSection(
-                context,
-                ref,
-                l10n,
-                title: l10n.librarySectionNotStarted,
-                books: categorized.notStarted,
-              ),
-              _buildSection(
-                context,
-                ref,
-                l10n,
-                title: l10n.librarySectionRead,
-                books: categorized.read,
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
-            ],
+          final syncConfigured = ref.watch(syncConfigProvider).isConfigured;
+          final scroll = CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: categorized.isEmpty
+                ? [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _buildEmptyState(context, l10n),
+                    ),
+                  ]
+                : [
+                    _buildSection(
+                      context,
+                      ref,
+                      l10n,
+                      title: l10n.librarySectionInProgress,
+                      books: categorized.inProgress,
+                    ),
+                    _buildSection(
+                      context,
+                      ref,
+                      l10n,
+                      title: l10n.librarySectionNotStarted,
+                      books: categorized.notStarted,
+                    ),
+                    _buildSection(
+                      context,
+                      ref,
+                      l10n,
+                      title: l10n.librarySectionRead,
+                      books: categorized.read,
+                    ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                  ],
+          );
+
+          if (!syncConfigured) return scroll;
+          return RefreshIndicator(
+            onRefresh: () =>
+                ref.read(librarySyncProvider.notifier).triggerSync(),
+            child: scroll,
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -146,7 +188,7 @@ class LibraryScreen extends ConsumerWidget {
                 return BookCard(
                   book: book,
                   onTap: () => context.push('/reader/${book.id}'),
-                  onLongPress: () => _showDeleteDialog(
+                  onLongPress: () => _showBookActions(
                     context,
                     ref,
                     book.id,
@@ -191,14 +233,74 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  void _showDeleteDialog(
+  void _showBookActions(
     BuildContext context,
     WidgetRef ref,
     String bookId,
     String title,
     AppLocalizations l10n,
   ) {
-    showDialog(
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Text(
+                  title,
+                  style: Theme.of(sheetCtx).textTheme.titleMedium,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.check_circle_outline),
+                title: Text(l10n.markAsRead),
+                onTap: () async {
+                  Navigator.of(sheetCtx).pop();
+                  await ref.read(markBookAsReadProvider(bookId))();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(SnackBar(
+                        content: Text(l10n.markedAsRead(title)),
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: Text(
+                  l10n.delete,
+                  style: const TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.of(sheetCtx).pop();
+                  _confirmDelete(context, ref, bookId, title, l10n);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    String bookId,
+    String title,
+    AppLocalizations l10n,
+  ) {
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(l10n.deleteBook),
@@ -216,6 +318,61 @@ class LibraryScreen extends ConsumerWidget {
             child: Text(
               l10n.delete,
               style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportProgressBar extends StatelessWidget implements PreferredSizeWidget {
+  final int current;
+  final int total;
+  final String fileName;
+  final AppLocalizations l10n;
+
+  const _ImportProgressBar({
+    required this.current,
+    required this.total,
+    required this.fileName,
+    required this.l10n,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(48);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final fraction = total == 0 ? 0.0 : (current / total).clamp(0.0, 1.0);
+    final displayName = fileName.isEmpty ? '…' : fileName;
+    return SizedBox(
+      height: preferredSize.height,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LinearProgressIndicator(
+            value: fraction == 0 ? null : fraction,
+            minHeight: 2,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    l10n.syncImportingProgress(
+                      current + 1 > total ? total : current + 1,
+                      total,
+                      displayName,
+                    ),
+                    style: theme.textTheme.bodySmall,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

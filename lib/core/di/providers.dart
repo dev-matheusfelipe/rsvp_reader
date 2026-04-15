@@ -7,6 +7,7 @@ import '../../database/app_database.dart';
 import '../../database/daos/books_dao.dart';
 import '../../database/daos/cached_tokens_dao.dart';
 import '../../database/daos/reading_progress_dao.dart';
+import '../../database/daos/sync_import_failures_dao.dart';
 
 final appDatabaseProvider = Provider<AppDatabase>((ref) {
   throw UnimplementedError('Must be overridden at app startup');
@@ -22,6 +23,10 @@ final readingProgressDaoProvider = Provider<ReadingProgressDao>((ref) {
 
 final cachedTokensDaoProvider = Provider<CachedTokensDao>((ref) {
   return ref.watch(appDatabaseProvider).cachedTokensDao;
+});
+
+final syncImportFailuresDaoProvider = Provider<SyncImportFailuresDao>((ref) {
+  return ref.watch(appDatabaseProvider).syncImportFailuresDao;
 });
 
 final appDocumentsDirProvider = FutureProvider<Directory>((ref) async {

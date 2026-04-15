@@ -9,7 +9,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/di/providers.dart';
+import '../../../../core/utils/sync_file_name.dart';
 import '../../../../database/app_database.dart';
+import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 import '../../data/services/epub_extraction_service.dart';
 
 final epubExtractionServiceProvider = Provider<EpubExtractionService>((ref) {
@@ -65,6 +67,7 @@ class EpubImportNotifier extends StateNotifier<ImportState> {
       state = state.copyWith(status: ImportStatus.processing);
 
       final filePath = result.files.single.path!;
+      final pickedName = result.files.single.name;
       final bytes = await File(filePath).readAsBytes();
 
       // 1. Parse EPUB
@@ -89,8 +92,14 @@ class EpubImportNotifier extends StateNotifier<ImportState> {
       final savedPath = '${booksDir.path}/$bookId.epub';
       await File(savedPath).writeAsBytes(bytes);
 
-      // 3. Insert book metadata into database
+      // 3. Insert book metadata into database. We keep the user's filename
+      // for the sync folder (disambiguated against existing books) so the
+      // files there are human-browsable.
       final booksDao = _ref.read(booksDaoProvider);
+      final syncFileName = await uniqueSyncFileName(
+        desired: pickedName,
+        booksDao: booksDao,
+      );
       await booksDao.insertBook(BooksTableCompanion.insert(
         id: bookId,
         title: parsedBook.title,
@@ -100,6 +109,7 @@ class EpubImportNotifier extends StateNotifier<ImportState> {
         totalWords: Value(parsedBook.totalWords),
         chapterCount: Value(parsedBook.chapters.length),
         importedAt: DateTime.now(),
+        syncFileName: Value(syncFileName),
       ));
 
       // 4. Cache tokenized words per chapter
@@ -132,6 +142,9 @@ class EpubImportNotifier extends StateNotifier<ImportState> {
         status: ImportStatus.done,
         importedBookId: bookId,
       );
+
+      // Push new book to sync folder (will copy EPUB too if syncEpubs is on).
+      _ref.read(librarySyncProvider.notifier).schedulePush();
     } catch (e) {
       state = state.copyWith(
         status: ImportStatus.error,

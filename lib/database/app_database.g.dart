@@ -104,6 +104,17 @@ class $BooksTableTable extends BooksTable
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _syncFileNameMeta = const VerificationMeta(
+    'syncFileName',
+  );
+  @override
+  late final GeneratedColumn<String> syncFileName = GeneratedColumn<String>(
+    'sync_file_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -115,6 +126,7 @@ class $BooksTableTable extends BooksTable
     chapterCount,
     importedAt,
     lastReadAt,
+    syncFileName,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -193,6 +205,15 @@ class $BooksTableTable extends BooksTable
         ),
       );
     }
+    if (data.containsKey('sync_file_name')) {
+      context.handle(
+        _syncFileNameMeta,
+        syncFileName.isAcceptableOrUnknown(
+          data['sync_file_name']!,
+          _syncFileNameMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -238,6 +259,10 @@ class $BooksTableTable extends BooksTable
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_read_at'],
       ),
+      syncFileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sync_file_name'],
+      ),
     );
   }
 
@@ -257,6 +282,12 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
   final int chapterCount;
   final DateTime importedAt;
   final DateTime? lastReadAt;
+
+  /// Filename used when storing this book's EPUB in the sync folder. We keep
+  /// the user's original filename (with numeric suffix to disambiguate
+  /// collisions) instead of the UUID so the folder is browsable.
+  /// Null for books imported before the sync-filename feature landed.
+  final String? syncFileName;
   const BooksTableData({
     required this.id,
     required this.title,
@@ -267,6 +298,7 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     required this.chapterCount,
     required this.importedAt,
     this.lastReadAt,
+    this.syncFileName,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -285,6 +317,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     map['imported_at'] = Variable<DateTime>(importedAt);
     if (!nullToAbsent || lastReadAt != null) {
       map['last_read_at'] = Variable<DateTime>(lastReadAt);
+    }
+    if (!nullToAbsent || syncFileName != null) {
+      map['sync_file_name'] = Variable<String>(syncFileName);
     }
     return map;
   }
@@ -306,6 +341,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       lastReadAt: lastReadAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastReadAt),
+      syncFileName: syncFileName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncFileName),
     );
   }
 
@@ -324,6 +362,7 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       chapterCount: serializer.fromJson<int>(json['chapterCount']),
       importedAt: serializer.fromJson<DateTime>(json['importedAt']),
       lastReadAt: serializer.fromJson<DateTime?>(json['lastReadAt']),
+      syncFileName: serializer.fromJson<String?>(json['syncFileName']),
     );
   }
   @override
@@ -339,6 +378,7 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       'chapterCount': serializer.toJson<int>(chapterCount),
       'importedAt': serializer.toJson<DateTime>(importedAt),
       'lastReadAt': serializer.toJson<DateTime?>(lastReadAt),
+      'syncFileName': serializer.toJson<String?>(syncFileName),
     };
   }
 
@@ -352,6 +392,7 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     int? chapterCount,
     DateTime? importedAt,
     Value<DateTime?> lastReadAt = const Value.absent(),
+    Value<String?> syncFileName = const Value.absent(),
   }) => BooksTableData(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -362,6 +403,7 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     chapterCount: chapterCount ?? this.chapterCount,
     importedAt: importedAt ?? this.importedAt,
     lastReadAt: lastReadAt.present ? lastReadAt.value : this.lastReadAt,
+    syncFileName: syncFileName.present ? syncFileName.value : this.syncFileName,
   );
   BooksTableData copyWithCompanion(BooksTableCompanion data) {
     return BooksTableData(
@@ -384,6 +426,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       lastReadAt: data.lastReadAt.present
           ? data.lastReadAt.value
           : this.lastReadAt,
+      syncFileName: data.syncFileName.present
+          ? data.syncFileName.value
+          : this.syncFileName,
     );
   }
 
@@ -398,7 +443,8 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
           ..write('totalWords: $totalWords, ')
           ..write('chapterCount: $chapterCount, ')
           ..write('importedAt: $importedAt, ')
-          ..write('lastReadAt: $lastReadAt')
+          ..write('lastReadAt: $lastReadAt, ')
+          ..write('syncFileName: $syncFileName')
           ..write(')'))
         .toString();
   }
@@ -414,6 +460,7 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     chapterCount,
     importedAt,
     lastReadAt,
+    syncFileName,
   );
   @override
   bool operator ==(Object other) =>
@@ -427,7 +474,8 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
           other.totalWords == this.totalWords &&
           other.chapterCount == this.chapterCount &&
           other.importedAt == this.importedAt &&
-          other.lastReadAt == this.lastReadAt);
+          other.lastReadAt == this.lastReadAt &&
+          other.syncFileName == this.syncFileName);
 }
 
 class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
@@ -440,6 +488,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
   final Value<int> chapterCount;
   final Value<DateTime> importedAt;
   final Value<DateTime?> lastReadAt;
+  final Value<String?> syncFileName;
   final Value<int> rowid;
   const BooksTableCompanion({
     this.id = const Value.absent(),
@@ -451,6 +500,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     this.chapterCount = const Value.absent(),
     this.importedAt = const Value.absent(),
     this.lastReadAt = const Value.absent(),
+    this.syncFileName = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BooksTableCompanion.insert({
@@ -463,6 +513,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     this.chapterCount = const Value.absent(),
     required DateTime importedAt,
     this.lastReadAt = const Value.absent(),
+    this.syncFileName = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -478,6 +529,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     Expression<int>? chapterCount,
     Expression<DateTime>? importedAt,
     Expression<DateTime>? lastReadAt,
+    Expression<String>? syncFileName,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -490,6 +542,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
       if (chapterCount != null) 'chapter_count': chapterCount,
       if (importedAt != null) 'imported_at': importedAt,
       if (lastReadAt != null) 'last_read_at': lastReadAt,
+      if (syncFileName != null) 'sync_file_name': syncFileName,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -504,6 +557,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     Value<int>? chapterCount,
     Value<DateTime>? importedAt,
     Value<DateTime?>? lastReadAt,
+    Value<String?>? syncFileName,
     Value<int>? rowid,
   }) {
     return BooksTableCompanion(
@@ -516,6 +570,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
       chapterCount: chapterCount ?? this.chapterCount,
       importedAt: importedAt ?? this.importedAt,
       lastReadAt: lastReadAt ?? this.lastReadAt,
+      syncFileName: syncFileName ?? this.syncFileName,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -550,6 +605,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     if (lastReadAt.present) {
       map['last_read_at'] = Variable<DateTime>(lastReadAt.value);
     }
+    if (syncFileName.present) {
+      map['sync_file_name'] = Variable<String>(syncFileName.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -568,6 +626,7 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
           ..write('chapterCount: $chapterCount, ')
           ..write('importedAt: $importedAt, ')
           ..write('lastReadAt: $lastReadAt, ')
+          ..write('syncFileName: $syncFileName, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1421,6 +1480,287 @@ class CachedTokensTableCompanion
   }
 }
 
+class $SyncImportFailuresTableTable extends SyncImportFailuresTable
+    with TableInfo<$SyncImportFailuresTableTable, SyncImportFailuresTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncImportFailuresTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _fileNameMeta = const VerificationMeta(
+    'fileName',
+  );
+  @override
+  late final GeneratedColumn<String> fileName = GeneratedColumn<String>(
+    'file_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _errorMessageMeta = const VerificationMeta(
+    'errorMessage',
+  );
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+    'error_message',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _failedAtMeta = const VerificationMeta(
+    'failedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> failedAt = GeneratedColumn<DateTime>(
+    'failed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [fileName, errorMessage, failedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_import_failures_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncImportFailuresTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('file_name')) {
+      context.handle(
+        _fileNameMeta,
+        fileName.isAcceptableOrUnknown(data['file_name']!, _fileNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fileNameMeta);
+    }
+    if (data.containsKey('error_message')) {
+      context.handle(
+        _errorMessageMeta,
+        errorMessage.isAcceptableOrUnknown(
+          data['error_message']!,
+          _errorMessageMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_errorMessageMeta);
+    }
+    if (data.containsKey('failed_at')) {
+      context.handle(
+        _failedAtMeta,
+        failedAt.isAcceptableOrUnknown(data['failed_at']!, _failedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_failedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {fileName};
+  @override
+  SyncImportFailuresTableData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncImportFailuresTableData(
+      fileName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_name'],
+      )!,
+      errorMessage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}error_message'],
+      )!,
+      failedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}failed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncImportFailuresTableTable createAlias(String alias) {
+    return $SyncImportFailuresTableTable(attachedDatabase, alias);
+  }
+}
+
+class SyncImportFailuresTableData extends DataClass
+    implements Insertable<SyncImportFailuresTableData> {
+  final String fileName;
+  final String errorMessage;
+  final DateTime failedAt;
+  const SyncImportFailuresTableData({
+    required this.fileName,
+    required this.errorMessage,
+    required this.failedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['file_name'] = Variable<String>(fileName);
+    map['error_message'] = Variable<String>(errorMessage);
+    map['failed_at'] = Variable<DateTime>(failedAt);
+    return map;
+  }
+
+  SyncImportFailuresTableCompanion toCompanion(bool nullToAbsent) {
+    return SyncImportFailuresTableCompanion(
+      fileName: Value(fileName),
+      errorMessage: Value(errorMessage),
+      failedAt: Value(failedAt),
+    );
+  }
+
+  factory SyncImportFailuresTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncImportFailuresTableData(
+      fileName: serializer.fromJson<String>(json['fileName']),
+      errorMessage: serializer.fromJson<String>(json['errorMessage']),
+      failedAt: serializer.fromJson<DateTime>(json['failedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'fileName': serializer.toJson<String>(fileName),
+      'errorMessage': serializer.toJson<String>(errorMessage),
+      'failedAt': serializer.toJson<DateTime>(failedAt),
+    };
+  }
+
+  SyncImportFailuresTableData copyWith({
+    String? fileName,
+    String? errorMessage,
+    DateTime? failedAt,
+  }) => SyncImportFailuresTableData(
+    fileName: fileName ?? this.fileName,
+    errorMessage: errorMessage ?? this.errorMessage,
+    failedAt: failedAt ?? this.failedAt,
+  );
+  SyncImportFailuresTableData copyWithCompanion(
+    SyncImportFailuresTableCompanion data,
+  ) {
+    return SyncImportFailuresTableData(
+      fileName: data.fileName.present ? data.fileName.value : this.fileName,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
+      failedAt: data.failedAt.present ? data.failedAt.value : this.failedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncImportFailuresTableData(')
+          ..write('fileName: $fileName, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('failedAt: $failedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(fileName, errorMessage, failedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncImportFailuresTableData &&
+          other.fileName == this.fileName &&
+          other.errorMessage == this.errorMessage &&
+          other.failedAt == this.failedAt);
+}
+
+class SyncImportFailuresTableCompanion
+    extends UpdateCompanion<SyncImportFailuresTableData> {
+  final Value<String> fileName;
+  final Value<String> errorMessage;
+  final Value<DateTime> failedAt;
+  final Value<int> rowid;
+  const SyncImportFailuresTableCompanion({
+    this.fileName = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.failedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncImportFailuresTableCompanion.insert({
+    required String fileName,
+    required String errorMessage,
+    required DateTime failedAt,
+    this.rowid = const Value.absent(),
+  }) : fileName = Value(fileName),
+       errorMessage = Value(errorMessage),
+       failedAt = Value(failedAt);
+  static Insertable<SyncImportFailuresTableData> custom({
+    Expression<String>? fileName,
+    Expression<String>? errorMessage,
+    Expression<DateTime>? failedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (fileName != null) 'file_name': fileName,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (failedAt != null) 'failed_at': failedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncImportFailuresTableCompanion copyWith({
+    Value<String>? fileName,
+    Value<String>? errorMessage,
+    Value<DateTime>? failedAt,
+    Value<int>? rowid,
+  }) {
+    return SyncImportFailuresTableCompanion(
+      fileName: fileName ?? this.fileName,
+      errorMessage: errorMessage ?? this.errorMessage,
+      failedAt: failedAt ?? this.failedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (fileName.present) {
+      map['file_name'] = Variable<String>(fileName.value);
+    }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (failedAt.present) {
+      map['failed_at'] = Variable<DateTime>(failedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncImportFailuresTableCompanion(')
+          ..write('fileName: $fileName, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('failedAt: $failedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1429,6 +1769,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ReadingProgressTableTable(this);
   late final $CachedTokensTableTable cachedTokensTable =
       $CachedTokensTableTable(this);
+  late final $SyncImportFailuresTableTable syncImportFailuresTable =
+      $SyncImportFailuresTableTable(this);
   late final BooksDao booksDao = BooksDao(this as AppDatabase);
   late final ReadingProgressDao readingProgressDao = ReadingProgressDao(
     this as AppDatabase,
@@ -1436,6 +1778,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final CachedTokensDao cachedTokensDao = CachedTokensDao(
     this as AppDatabase,
   );
+  late final SyncImportFailuresDao syncImportFailuresDao =
+      SyncImportFailuresDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1444,6 +1788,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     booksTable,
     readingProgressTable,
     cachedTokensTable,
+    syncImportFailuresTable,
   ];
 }
 
@@ -1458,6 +1803,7 @@ typedef $$BooksTableTableCreateCompanionBuilder =
       Value<int> chapterCount,
       required DateTime importedAt,
       Value<DateTime?> lastReadAt,
+      Value<String?> syncFileName,
       Value<int> rowid,
     });
 typedef $$BooksTableTableUpdateCompanionBuilder =
@@ -1471,6 +1817,7 @@ typedef $$BooksTableTableUpdateCompanionBuilder =
       Value<int> chapterCount,
       Value<DateTime> importedAt,
       Value<DateTime?> lastReadAt,
+      Value<String?> syncFileName,
       Value<int> rowid,
     });
 
@@ -1588,6 +1935,11 @@ class $$BooksTableTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get syncFileName => $composableBuilder(
+    column: $table.syncFileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> readingProgressTableRefs(
     Expression<bool> Function($$ReadingProgressTableTableFilterComposer f) f,
   ) {
@@ -1692,6 +2044,11 @@ class $$BooksTableTableOrderingComposer
     column: $table.lastReadAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get syncFileName => $composableBuilder(
+    column: $table.syncFileName,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BooksTableTableAnnotationComposer
@@ -1737,6 +2094,11 @@ class $$BooksTableTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastReadAt => $composableBuilder(
     column: $table.lastReadAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get syncFileName => $composableBuilder(
+    column: $table.syncFileName,
     builder: (column) => column,
   );
 
@@ -1833,6 +2195,7 @@ class $$BooksTableTableTableManager
                 Value<int> chapterCount = const Value.absent(),
                 Value<DateTime> importedAt = const Value.absent(),
                 Value<DateTime?> lastReadAt = const Value.absent(),
+                Value<String?> syncFileName = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BooksTableCompanion(
                 id: id,
@@ -1844,6 +2207,7 @@ class $$BooksTableTableTableManager
                 chapterCount: chapterCount,
                 importedAt: importedAt,
                 lastReadAt: lastReadAt,
+                syncFileName: syncFileName,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1857,6 +2221,7 @@ class $$BooksTableTableTableManager
                 Value<int> chapterCount = const Value.absent(),
                 required DateTime importedAt,
                 Value<DateTime?> lastReadAt = const Value.absent(),
+                Value<String?> syncFileName = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BooksTableCompanion.insert(
                 id: id,
@@ -1868,6 +2233,7 @@ class $$BooksTableTableTableManager
                 chapterCount: chapterCount,
                 importedAt: importedAt,
                 lastReadAt: lastReadAt,
+                syncFileName: syncFileName,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2674,6 +3040,189 @@ typedef $$CachedTokensTableTableProcessedTableManager =
       CachedTokensTableData,
       PrefetchHooks Function({bool bookId})
     >;
+typedef $$SyncImportFailuresTableTableCreateCompanionBuilder =
+    SyncImportFailuresTableCompanion Function({
+      required String fileName,
+      required String errorMessage,
+      required DateTime failedAt,
+      Value<int> rowid,
+    });
+typedef $$SyncImportFailuresTableTableUpdateCompanionBuilder =
+    SyncImportFailuresTableCompanion Function({
+      Value<String> fileName,
+      Value<String> errorMessage,
+      Value<DateTime> failedAt,
+      Value<int> rowid,
+    });
+
+class $$SyncImportFailuresTableTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncImportFailuresTableTable> {
+  $$SyncImportFailuresTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get failedAt => $composableBuilder(
+    column: $table.failedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncImportFailuresTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncImportFailuresTableTable> {
+  $$SyncImportFailuresTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get fileName => $composableBuilder(
+    column: $table.fileName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get failedAt => $composableBuilder(
+    column: $table.failedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncImportFailuresTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncImportFailuresTableTable> {
+  $$SyncImportFailuresTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get fileName =>
+      $composableBuilder(column: $table.fileName, builder: (column) => column);
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+    column: $table.errorMessage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get failedAt =>
+      $composableBuilder(column: $table.failedAt, builder: (column) => column);
+}
+
+class $$SyncImportFailuresTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncImportFailuresTableTable,
+          SyncImportFailuresTableData,
+          $$SyncImportFailuresTableTableFilterComposer,
+          $$SyncImportFailuresTableTableOrderingComposer,
+          $$SyncImportFailuresTableTableAnnotationComposer,
+          $$SyncImportFailuresTableTableCreateCompanionBuilder,
+          $$SyncImportFailuresTableTableUpdateCompanionBuilder,
+          (
+            SyncImportFailuresTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $SyncImportFailuresTableTable,
+              SyncImportFailuresTableData
+            >,
+          ),
+          SyncImportFailuresTableData,
+          PrefetchHooks Function()
+        > {
+  $$SyncImportFailuresTableTableTableManager(
+    _$AppDatabase db,
+    $SyncImportFailuresTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncImportFailuresTableTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$SyncImportFailuresTableTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$SyncImportFailuresTableTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> fileName = const Value.absent(),
+                Value<String> errorMessage = const Value.absent(),
+                Value<DateTime> failedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncImportFailuresTableCompanion(
+                fileName: fileName,
+                errorMessage: errorMessage,
+                failedAt: failedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String fileName,
+                required String errorMessage,
+                required DateTime failedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SyncImportFailuresTableCompanion.insert(
+                fileName: fileName,
+                errorMessage: errorMessage,
+                failedAt: failedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncImportFailuresTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncImportFailuresTableTable,
+      SyncImportFailuresTableData,
+      $$SyncImportFailuresTableTableFilterComposer,
+      $$SyncImportFailuresTableTableOrderingComposer,
+      $$SyncImportFailuresTableTableAnnotationComposer,
+      $$SyncImportFailuresTableTableCreateCompanionBuilder,
+      $$SyncImportFailuresTableTableUpdateCompanionBuilder,
+      (
+        SyncImportFailuresTableData,
+        BaseReferences<
+          _$AppDatabase,
+          $SyncImportFailuresTableTable,
+          SyncImportFailuresTableData
+        >,
+      ),
+      SyncImportFailuresTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2684,4 +3233,9 @@ class $AppDatabaseManager {
       $$ReadingProgressTableTableTableManager(_db, _db.readingProgressTable);
   $$CachedTokensTableTableTableManager get cachedTokensTable =>
       $$CachedTokensTableTableTableManager(_db, _db.cachedTokensTable);
+  $$SyncImportFailuresTableTableTableManager get syncImportFailuresTable =>
+      $$SyncImportFailuresTableTableTableManager(
+        _db,
+        _db.syncImportFailuresTable,
+      );
 }

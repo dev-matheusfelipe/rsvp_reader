@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/native.dart';
@@ -9,6 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'app.dart';
 import 'core/di/providers.dart';
 import 'database/app_database.dart';
+import 'features/library_sync/presentation/providers/library_sync_provider.dart';
+import 'features/library_sync/presentation/providers/sync_config_provider.dart';
+import 'features/rsvp_reader/presentation/providers/display_settings_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,12 +28,35 @@ void main() async {
     NativeDatabase.createInBackground(dbFile),
   );
 
+  final container = ProviderContainer(
+    overrides: [
+      appDatabaseProvider.overrideWithValue(database),
+    ],
+  );
+
+  // Fire an initial sync on startup if the user has configured a folder.
+  // We need to wait for SyncConfigNotifier.load() to finish first.
+  unawaited(_initialSync(container));
+
   runApp(
-    ProviderScope(
-      overrides: [
-        appDatabaseProvider.overrideWithValue(database),
-      ],
+    UncontrolledProviderScope(
+      container: container,
       child: const RsvpReaderApp(),
     ),
   );
+}
+
+Future<void> _initialSync(ProviderContainer container) async {
+  final configNotifier = container.read(syncConfigProvider.notifier);
+  while (!configNotifier.isLoaded) {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  if (!container.read(syncConfigProvider).isActive) return;
+
+  // Wait for local display settings to load before we snapshot them for the
+  // push — otherwise the service would read the defaulted initial state
+  // (const DisplaySettings()) and overwrite the remote's real values.
+  await container.read(displaySettingsProvider.notifier).load();
+
+  await container.read(librarySyncProvider.notifier).triggerSync();
 }

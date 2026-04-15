@@ -9,6 +9,7 @@ import '../../../../core/di/providers.dart';
 import '../../../../database/app_database.dart';
 import '../../../epub_import/domain/entities/chapter.dart';
 import '../../../epub_import/domain/entities/word_token.dart';
+import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 import '../../domain/entities/display_settings.dart';
 import '../../domain/entities/rsvp_state.dart';
 import 'display_settings_provider.dart';
@@ -237,6 +238,9 @@ class RsvpEngineNotifier extends StateNotifier<RsvpState> {
     // Update lastReadAt on book
     final booksDao = _ref.read(booksDaoProvider);
     await booksDao.updateLastReadAt(state.bookId);
+
+    // Debounced push to sync folder if configured.
+    _ref.read(librarySyncProvider.notifier).schedulePush();
   }
 
   int _calculateGlobalIndex(List<Chapter> chapters, int chapterIdx, int wordIdx) {

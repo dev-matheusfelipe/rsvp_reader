@@ -1,7 +1,10 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/constants/app_constants.dart';
 import '../../../../core/di/providers.dart';
 import '../../../../database/app_database.dart';
+import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 
 /// Stream of all books, sorted by last read date.
 final bookLibraryProvider = StreamProvider<List<BooksTableData>>((ref) {
@@ -111,5 +114,53 @@ final deleteBookProvider =
     await tokensDao.deleteTokensForBook(bookId);
     await progressDao.deleteProgressForBook(bookId);
     await booksDao.deleteBook(bookId);
+
+    // Propagate deletion to the sync folder as a tombstone.
+    await ref.read(librarySyncProvider.notifier).pushDelete(bookId);
+  };
+});
+
+/// Jump a book's reading progress to the end so it shows up under "Read".
+/// Picks the last chapter's wordCount as the cursor. If that cache row is
+/// missing, derives the word count from totalWords so the library's 99%
+/// threshold still flips.
+final markBookAsReadProvider =
+    Provider.family<Future<void> Function(), String>((ref, bookId) {
+  return () async {
+    final booksDao = ref.read(booksDaoProvider);
+    final tokensDao = ref.read(cachedTokensDaoProvider);
+    final progressDao = ref.read(readingProgressDaoProvider);
+
+    final book = await booksDao.getBookById(bookId);
+    if (book == null || book.chapterCount <= 0) return;
+
+    final lastChapterIndex = book.chapterCount - 1;
+    final lastChapter =
+        await tokensDao.getTokensForChapter(bookId, lastChapterIndex);
+    int lastWordIndex;
+    if (lastChapter != null) {
+      lastWordIndex = lastChapter.wordCount;
+    } else {
+      // Tokens cache missing for the last chapter — fall back to whatever
+      // totalWords - (words before last chapter) gives us, so the
+      // categorizedLibraryProvider's fraction computation still reaches 1.0.
+      final wordsBefore =
+          await tokensDao.getWordCountBeforeChapter(bookId, lastChapterIndex);
+      final remaining = book.totalWords - wordsBefore;
+      lastWordIndex = remaining > 0 ? remaining : book.totalWords;
+    }
+
+    final existing = await progressDao.getProgressForBook(bookId);
+    await progressDao.upsertProgress(ReadingProgressTableCompanion(
+      bookId: Value(bookId),
+      chapterIndex: Value(lastChapterIndex),
+      wordIndex: Value(lastWordIndex),
+      wpm: Value(existing?.wpm ?? AppConstants.defaultWpm),
+      updatedAt: Value(DateTime.now()),
+    ));
+    await booksDao.updateLastReadAt(bookId);
+
+    // Push updated progress to the sync folder.
+    ref.read(librarySyncProvider.notifier).schedulePush();
   };
 });

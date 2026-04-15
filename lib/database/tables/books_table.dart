@@ -11,6 +11,12 @@ class BooksTable extends Table {
   DateTimeColumn get importedAt => dateTime()();
   DateTimeColumn get lastReadAt => dateTime().nullable()();
 
+  /// Filename used when storing this book's EPUB in the sync folder. We keep
+  /// the user's original filename (with numeric suffix to disambiguate
+  /// collisions) instead of the UUID so the folder is browsable.
+  /// Null for books imported before the sync-filename feature landed.
+  TextColumn get syncFileName => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
