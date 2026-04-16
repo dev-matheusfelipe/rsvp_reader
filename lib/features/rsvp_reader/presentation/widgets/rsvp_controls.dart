@@ -31,13 +31,20 @@ class RsvpControls extends ConsumerWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  state.currentChapterTitle ?? '',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: state.displaySettings.wordColor.withAlpha(153),
+                // Article titles (single-chapter "books") can be long, so
+                // give the title the remaining row width and ellipsize it —
+                // the estimate on the right has a stable short width.
+                Expanded(
+                  child: Text(
+                    state.currentChapterTitle ?? '',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: state.displaySettings.wordColor.withAlpha(153),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
+                const SizedBox(width: 12),
                 Text(
                   l10n.minutesRemaining(state.estimatedMinutesRemaining),
                   style: theme.textTheme.bodySmall?.copyWith(

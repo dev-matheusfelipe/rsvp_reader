@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/di/providers.dart';
 import '../../../../database/app_database.dart';
+import '../../../../database/tables/book_source.dart';
 import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 
 /// Stream of all books, sorted by last read date.
@@ -28,23 +29,32 @@ class CategorizedBooks {
       inProgress.isEmpty && notStarted.isEmpty && read.isEmpty;
 }
 
-/// Books in the library split into "in progress", "not started", and "read".
+/// The kind of content to show in a library tab. Drives the `source` column
+/// filter in [categorizedLibraryProvider] and the empty-state copy.
+enum LibraryKind { books, articles }
+
+/// Books in the library split into "in progress", "not started", and "read",
+/// filtered by [LibraryKind] (books → source='epub', articles → source='article').
 ///
 /// Sorting:
 /// - inProgress: most recently read first
 /// - notStarted: most recently imported first
 /// - read: most recently finished first (by lastReadAt)
 final categorizedLibraryProvider =
-    FutureProvider<CategorizedBooks>((ref) async {
+    FutureProvider.family<CategorizedBooks, LibraryKind>((ref, kind) async {
   final books = await ref.watch(bookLibraryProvider.future);
   final progressDao = ref.read(readingProgressDaoProvider);
   final tokensDao = ref.read(cachedTokensDaoProvider);
+
+  final wantedSource =
+      kind == LibraryKind.articles ? BookSource.article : BookSource.epub;
+  final filtered = books.where((b) => b.source == wantedSource);
 
   final inProgress = <BooksTableData>[];
   final notStarted = <BooksTableData>[];
   final read = <BooksTableData>[];
 
-  for (final book in books) {
+  for (final book in filtered) {
     final progress = await progressDao.getProgressForBook(book.id);
     if (progress == null || book.totalWords <= 0) {
       notStarted.add(book);

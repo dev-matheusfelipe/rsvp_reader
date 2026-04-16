@@ -12,6 +12,7 @@ import '../../../../database/daos/books_dao.dart';
 import '../../../../database/daos/cached_tokens_dao.dart';
 import '../../../../database/daos/reading_progress_dao.dart';
 import '../../../../database/daos/sync_import_failures_dao.dart';
+import '../../../../database/tables/book_source.dart';
 import '../../../epub_import/data/services/epub_extraction_service.dart';
 import '../../../epub_import/domain/entities/chapter.dart';
 import '../../../rsvp_reader/domain/entities/display_settings.dart';
@@ -179,7 +180,11 @@ class LibrarySyncService {
     required DisplaySettings localSettings,
     required DateTime localSettingsUpdatedAt,
   }) async {
-    final books = await _booksDao.getAllBooks();
+    // Articles are local-only — they have no backing EPUB to upload and the
+    // sync manifest is an EPUB library format. Skip them here.
+    final books = (await _booksDao.getAllBooks())
+        .where((b) => b.source == BookSource.epub)
+        .toList();
     final snapshot = <SyncLibraryBook>[];
     for (final book in books) {
       final progress = await _progressDao.getProgressForBook(book.id);

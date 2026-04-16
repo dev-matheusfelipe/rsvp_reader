@@ -19,4 +19,8 @@
 - [x] Consolidar telas de configuração (DisplaySettingsPanel compartilhado entre bottom sheet e tela full-screen)
 
 ## Pendente
-- [ ] _(adicionar próximas features aqui)_
+- [x] Import de artigos web por URL (readability extractor em Dart puro, tabs Books/Articles na biblioteca)
+- [x] Share sheet Android (intent-filter + `receive_sharing_intent`, coordinator global de navegação/snackbar em `app.dart`)
+- [ ] Share sheet iOS — Xcode target precisa ser criado num Mac, passos em [docs/share-extension-ios.md](docs/share-extension-ios.md)
+- [ ] Tablet layout pass
+- [ ] Triagem de issues do GitHub

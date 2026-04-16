@@ -4,20 +4,43 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../database/app_database.dart';
 import '../../../../l10n/generated/app_localizations.dart';
+import '../../../article_import/presentation/providers/article_import_provider.dart';
+import '../../../article_import/presentation/widgets/import_article_dialog.dart';
 import '../../../epub_import/presentation/providers/epub_import_provider.dart';
 import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 import '../../../library_sync/presentation/providers/sync_config_provider.dart';
 import '../providers/book_library_provider.dart';
 import '../widgets/book_card.dart';
 
-class LibraryScreen extends ConsumerWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final libraryAsync = ref.watch(categorizedLibraryProvider);
     final importState = ref.watch(epubImportProvider);
+    final articleImportState = ref.watch(articleImportProvider);
 
     // Show snackbar if sync fails (only transitions into error).
     ref.listen<LibrarySyncState>(librarySyncProvider, (prev, next) {
@@ -36,7 +59,6 @@ class LibraryScreen extends ConsumerWidget {
       }
     });
 
-    // React to import state changes: navigate on success, show snackbar on error.
     ref.listen(epubImportProvider, (prev, next) {
       if (next.status == ImportStatus.done && next.importedBookId != null) {
         context.push('/reader/${next.importedBookId}');
@@ -55,7 +77,12 @@ class LibraryScreen extends ConsumerWidget {
       }
     });
 
+    // Article-import navigation + error snackbars are handled globally in
+    // `_ArticleImportCoordinator` (app.dart) so share-sheet imports work
+    // from any screen, not just the library.
+
     final syncState = ref.watch(librarySyncProvider);
+    final onArticlesTab = _tabController.index == 1;
 
     return Scaffold(
       appBar: AppBar(
@@ -66,88 +93,193 @@ class LibraryScreen extends ConsumerWidget {
             onPressed: () => context.push('/settings'),
           ),
         ],
-        bottom: syncState.isImporting
-            ? _ImportProgressBar(
-                current: syncState.importCurrent ?? 0,
-                total: syncState.importTotal ?? 0,
-                fileName: syncState.importFileName ?? '',
-                l10n: l10n,
-              )
-            : null,
-      ),
-      body: libraryAsync.when(
-        data: (categorized) {
-          final syncConfigured = ref.watch(syncConfigProvider).isConfigured;
-          final scroll = CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: categorized.isEmpty
-                ? [
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _buildEmptyState(context, l10n),
-                    ),
-                  ]
-                : [
-                    _buildSection(
-                      context,
-                      ref,
-                      l10n,
-                      title: l10n.librarySectionInProgress,
-                      books: categorized.inProgress,
-                    ),
-                    _buildSection(
-                      context,
-                      ref,
-                      l10n,
-                      title: l10n.librarySectionNotStarted,
-                      books: categorized.notStarted,
-                    ),
-                    _buildSection(
-                      context,
-                      ref,
-                      l10n,
-                      title: l10n.librarySectionRead,
-                      books: categorized.read,
-                    ),
-                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                  ],
-          );
-
-          if (!syncConfigured) return scroll;
-          return RefreshIndicator(
-            onRefresh: () =>
-                ref.read(librarySyncProvider.notifier).triggerSync(),
-            child: scroll,
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('Error: $error')),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: importState.status == ImportStatus.processing
-            ? null
-            : () => ref.read(epubImportProvider.notifier).importFromFilePicker(),
-        icon: importState.status == ImportStatus.processing
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.add),
-        label: Text(
-          importState.status == ImportStatus.processing
-              ? l10n.importing
-              : l10n.importBook,
+        bottom: _AppBarBottom(
+          tabController: _tabController,
+          l10n: l10n,
+          syncState: syncState,
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _LibraryList(kind: LibraryKind.books),
+          _LibraryList(kind: LibraryKind.articles),
+        ],
+      ),
+      floatingActionButton: _buildFab(
+        l10n: l10n,
+        importState: importState,
+        articleImportState: articleImportState,
+        onArticlesTab: onArticlesTab,
       ),
     );
   }
 
-  /// Renders a section header + grid for the given list of books.
-  /// Returns an empty sliver if the list is empty.
+  /// The FAB's action, icon, and label all depend on the same two bits of
+  /// state (active tab + busy status) — compute them together instead of in
+  /// three parallel helpers.
+  Widget _buildFab({
+    required AppLocalizations l10n,
+    required ImportState importState,
+    required ArticleImportState articleImportState,
+    required bool onArticlesTab,
+  }) {
+    final bool busy;
+    final VoidCallback? onPressed;
+    final String label;
+    final IconData idleIcon;
+
+    if (onArticlesTab) {
+      busy = articleImportState.status == ArticleImportStatus.fetching ||
+          articleImportState.status == ArticleImportStatus.processing;
+      onPressed = busy
+          ? null
+          : () => showDialog<void>(
+                context: context,
+                builder: (_) => const ImportArticleDialog(),
+              );
+      label = switch (articleImportState.status) {
+        ArticleImportStatus.fetching => l10n.importArticleFetching,
+        ArticleImportStatus.processing => l10n.importing,
+        _ => l10n.importArticle,
+      };
+      idleIcon = Icons.link;
+    } else {
+      busy = importState.status == ImportStatus.processing;
+      onPressed = busy
+          ? null
+          : () => ref.read(epubImportProvider.notifier).importFromFilePicker();
+      label = busy ? l10n.importing : l10n.importBook;
+      idleIcon = Icons.add;
+    }
+
+    return FloatingActionButton.extended(
+      onPressed: onPressed,
+      icon: busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Icon(idleIcon),
+      label: Text(label),
+    );
+  }
+}
+
+/// AppBar `bottom` that layers the Books/Articles tab bar on top of an
+/// optional sync progress indicator.
+class _AppBarBottom extends StatelessWidget implements PreferredSizeWidget {
+  final TabController tabController;
+  final AppLocalizations l10n;
+  final LibrarySyncState syncState;
+
+  const _AppBarBottom({
+    required this.tabController,
+    required this.l10n,
+    required this.syncState,
+  });
+
+  static const _tabsHeight = 48.0;
+  static const _progressHeight = 48.0;
+
+  @override
+  Size get preferredSize => Size.fromHeight(
+        syncState.isImporting ? _tabsHeight + _progressHeight : _tabsHeight,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (syncState.isImporting)
+          _ImportProgressBar(
+            current: syncState.importCurrent ?? 0,
+            total: syncState.importTotal ?? 0,
+            fileName: syncState.importFileName ?? '',
+            l10n: l10n,
+          ),
+        TabBar(
+          controller: tabController,
+          tabs: [
+            Tab(text: l10n.libraryTabBooks),
+            Tab(text: l10n.libraryTabArticles),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Renders the categorized library for a given [LibraryKind], including
+/// empty-state and pull-to-refresh (when sync is configured).
+class _LibraryList extends ConsumerWidget {
+  final LibraryKind kind;
+
+  const _LibraryList({required this.kind});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
+    final categorizedAsync = ref.watch(categorizedLibraryProvider(kind));
+
+    return categorizedAsync.when(
+      data: (categorized) {
+        // Only the Books tab participates in sync; articles are local-only.
+        final syncConfigured = kind == LibraryKind.books &&
+            ref.watch(syncConfigProvider).isConfigured;
+
+        final scroll = CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: categorized.isEmpty
+              ? [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyState(kind: kind, l10n: l10n),
+                  ),
+                ]
+              : [
+                  _buildSection(
+                    context,
+                    ref,
+                    l10n,
+                    title: l10n.librarySectionInProgress,
+                    books: categorized.inProgress,
+                  ),
+                  _buildSection(
+                    context,
+                    ref,
+                    l10n,
+                    title: l10n.librarySectionNotStarted,
+                    books: categorized.notStarted,
+                  ),
+                  _buildSection(
+                    context,
+                    ref,
+                    l10n,
+                    title: l10n.librarySectionRead,
+                    books: categorized.read,
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                ],
+        );
+
+        if (!syncConfigured) return scroll;
+        return RefreshIndicator(
+          onRefresh: () =>
+              ref.read(librarySyncProvider.notifier).triggerSync(),
+          child: scroll,
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(child: Text('Error: $error')),
+    );
+  }
+
   Widget _buildSection(
     BuildContext context,
     WidgetRef ref,
@@ -199,34 +331,6 @@ class LibraryScreen extends ConsumerWidget {
               },
               childCount: books.length,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context, AppLocalizations l10n) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.menu_book_rounded,
-            size: 80,
-            color: Theme.of(context).colorScheme.onSurface.withAlpha(77),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            l10n.emptyLibrary,
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            l10n.emptyLibrarySubtitle,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color:
-                      Theme.of(context).colorScheme.onSurface.withAlpha(153),
-                ),
           ),
         ],
       ),
@@ -326,7 +430,47 @@ class LibraryScreen extends ConsumerWidget {
   }
 }
 
-class _ImportProgressBar extends StatelessWidget implements PreferredSizeWidget {
+class _EmptyState extends StatelessWidget {
+  final LibraryKind kind;
+  final AppLocalizations l10n;
+
+  const _EmptyState({required this.kind, required this.l10n});
+
+  @override
+  Widget build(BuildContext context) {
+    final isArticles = kind == LibraryKind.articles;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isArticles ? Icons.article_outlined : Icons.menu_book_rounded,
+            size: 80,
+            color: Theme.of(context).colorScheme.onSurface.withAlpha(77),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            isArticles ? l10n.emptyArticles : l10n.emptyLibrary,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            isArticles
+                ? l10n.emptyArticlesSubtitle
+                : l10n.emptyLibrarySubtitle,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color:
+                      Theme.of(context).colorScheme.onSurface.withAlpha(153),
+                ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImportProgressBar extends StatelessWidget {
   final int current;
   final int total;
   final String fileName;
@@ -340,15 +484,12 @@ class _ImportProgressBar extends StatelessWidget implements PreferredSizeWidget 
   });
 
   @override
-  Size get preferredSize => const Size.fromHeight(48);
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final fraction = total == 0 ? 0.0 : (current / total).clamp(0.0, 1.0);
     final displayName = fileName.isEmpty ? '…' : fileName;
     return SizedBox(
-      height: preferredSize.height,
+      height: 48,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

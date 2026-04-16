@@ -115,6 +115,38 @@ class $BooksTableTable extends BooksTable
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('epub'),
+  );
+  static const VerificationMeta _sourceUrlMeta = const VerificationMeta(
+    'sourceUrl',
+  );
+  @override
+  late final GeneratedColumn<String> sourceUrl = GeneratedColumn<String>(
+    'source_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _siteNameMeta = const VerificationMeta(
+    'siteName',
+  );
+  @override
+  late final GeneratedColumn<String> siteName = GeneratedColumn<String>(
+    'site_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -127,6 +159,9 @@ class $BooksTableTable extends BooksTable
     importedAt,
     lastReadAt,
     syncFileName,
+    source,
+    sourceUrl,
+    siteName,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -214,6 +249,24 @@ class $BooksTableTable extends BooksTable
         ),
       );
     }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('source_url')) {
+      context.handle(
+        _sourceUrlMeta,
+        sourceUrl.isAcceptableOrUnknown(data['source_url']!, _sourceUrlMeta),
+      );
+    }
+    if (data.containsKey('site_name')) {
+      context.handle(
+        _siteNameMeta,
+        siteName.isAcceptableOrUnknown(data['site_name']!, _siteNameMeta),
+      );
+    }
     return context;
   }
 
@@ -263,6 +316,18 @@ class $BooksTableTable extends BooksTable
         DriftSqlType.string,
         data['${effectivePrefix}sync_file_name'],
       ),
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      sourceUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_url'],
+      ),
+      siteName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}site_name'],
+      ),
     );
   }
 
@@ -288,6 +353,18 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
   /// collisions) instead of the UUID so the folder is browsable.
   /// Null for books imported before the sync-filename feature landed.
   final String? syncFileName;
+
+  /// Origin of the content: `epub` for imported EPUB files, `article` for
+  /// web articles fetched by URL. Drives library tab filtering and whether
+  /// the row participates in EPUB sync.
+  final String source;
+
+  /// For `source = article`: the URL it was imported from.
+  final String? sourceUrl;
+
+  /// For `source = article`: the site name (extracted by readability), used
+  /// as a subtitle/attribution in the library card.
+  final String? siteName;
   const BooksTableData({
     required this.id,
     required this.title,
@@ -299,6 +376,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     required this.importedAt,
     this.lastReadAt,
     this.syncFileName,
+    required this.source,
+    this.sourceUrl,
+    this.siteName,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -320,6 +400,13 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     }
     if (!nullToAbsent || syncFileName != null) {
       map['sync_file_name'] = Variable<String>(syncFileName);
+    }
+    map['source'] = Variable<String>(source);
+    if (!nullToAbsent || sourceUrl != null) {
+      map['source_url'] = Variable<String>(sourceUrl);
+    }
+    if (!nullToAbsent || siteName != null) {
+      map['site_name'] = Variable<String>(siteName);
     }
     return map;
   }
@@ -344,6 +431,13 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       syncFileName: syncFileName == null && nullToAbsent
           ? const Value.absent()
           : Value(syncFileName),
+      source: Value(source),
+      sourceUrl: sourceUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sourceUrl),
+      siteName: siteName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(siteName),
     );
   }
 
@@ -363,6 +457,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       importedAt: serializer.fromJson<DateTime>(json['importedAt']),
       lastReadAt: serializer.fromJson<DateTime?>(json['lastReadAt']),
       syncFileName: serializer.fromJson<String?>(json['syncFileName']),
+      source: serializer.fromJson<String>(json['source']),
+      sourceUrl: serializer.fromJson<String?>(json['sourceUrl']),
+      siteName: serializer.fromJson<String?>(json['siteName']),
     );
   }
   @override
@@ -379,6 +476,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       'importedAt': serializer.toJson<DateTime>(importedAt),
       'lastReadAt': serializer.toJson<DateTime?>(lastReadAt),
       'syncFileName': serializer.toJson<String?>(syncFileName),
+      'source': serializer.toJson<String>(source),
+      'sourceUrl': serializer.toJson<String?>(sourceUrl),
+      'siteName': serializer.toJson<String?>(siteName),
     };
   }
 
@@ -393,6 +493,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     DateTime? importedAt,
     Value<DateTime?> lastReadAt = const Value.absent(),
     Value<String?> syncFileName = const Value.absent(),
+    String? source,
+    Value<String?> sourceUrl = const Value.absent(),
+    Value<String?> siteName = const Value.absent(),
   }) => BooksTableData(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -404,6 +507,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     importedAt: importedAt ?? this.importedAt,
     lastReadAt: lastReadAt.present ? lastReadAt.value : this.lastReadAt,
     syncFileName: syncFileName.present ? syncFileName.value : this.syncFileName,
+    source: source ?? this.source,
+    sourceUrl: sourceUrl.present ? sourceUrl.value : this.sourceUrl,
+    siteName: siteName.present ? siteName.value : this.siteName,
   );
   BooksTableData copyWithCompanion(BooksTableCompanion data) {
     return BooksTableData(
@@ -429,6 +535,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
       syncFileName: data.syncFileName.present
           ? data.syncFileName.value
           : this.syncFileName,
+      source: data.source.present ? data.source.value : this.source,
+      sourceUrl: data.sourceUrl.present ? data.sourceUrl.value : this.sourceUrl,
+      siteName: data.siteName.present ? data.siteName.value : this.siteName,
     );
   }
 
@@ -444,7 +553,10 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
           ..write('chapterCount: $chapterCount, ')
           ..write('importedAt: $importedAt, ')
           ..write('lastReadAt: $lastReadAt, ')
-          ..write('syncFileName: $syncFileName')
+          ..write('syncFileName: $syncFileName, ')
+          ..write('source: $source, ')
+          ..write('sourceUrl: $sourceUrl, ')
+          ..write('siteName: $siteName')
           ..write(')'))
         .toString();
   }
@@ -461,6 +573,9 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
     importedAt,
     lastReadAt,
     syncFileName,
+    source,
+    sourceUrl,
+    siteName,
   );
   @override
   bool operator ==(Object other) =>
@@ -475,7 +590,10 @@ class BooksTableData extends DataClass implements Insertable<BooksTableData> {
           other.chapterCount == this.chapterCount &&
           other.importedAt == this.importedAt &&
           other.lastReadAt == this.lastReadAt &&
-          other.syncFileName == this.syncFileName);
+          other.syncFileName == this.syncFileName &&
+          other.source == this.source &&
+          other.sourceUrl == this.sourceUrl &&
+          other.siteName == this.siteName);
 }
 
 class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
@@ -489,6 +607,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
   final Value<DateTime> importedAt;
   final Value<DateTime?> lastReadAt;
   final Value<String?> syncFileName;
+  final Value<String> source;
+  final Value<String?> sourceUrl;
+  final Value<String?> siteName;
   final Value<int> rowid;
   const BooksTableCompanion({
     this.id = const Value.absent(),
@@ -501,6 +622,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     this.importedAt = const Value.absent(),
     this.lastReadAt = const Value.absent(),
     this.syncFileName = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceUrl = const Value.absent(),
+    this.siteName = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BooksTableCompanion.insert({
@@ -514,6 +638,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     required DateTime importedAt,
     this.lastReadAt = const Value.absent(),
     this.syncFileName = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceUrl = const Value.absent(),
+    this.siteName = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        title = Value(title),
@@ -530,6 +657,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     Expression<DateTime>? importedAt,
     Expression<DateTime>? lastReadAt,
     Expression<String>? syncFileName,
+    Expression<String>? source,
+    Expression<String>? sourceUrl,
+    Expression<String>? siteName,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -543,6 +673,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
       if (importedAt != null) 'imported_at': importedAt,
       if (lastReadAt != null) 'last_read_at': lastReadAt,
       if (syncFileName != null) 'sync_file_name': syncFileName,
+      if (source != null) 'source': source,
+      if (sourceUrl != null) 'source_url': sourceUrl,
+      if (siteName != null) 'site_name': siteName,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -558,6 +691,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     Value<DateTime>? importedAt,
     Value<DateTime?>? lastReadAt,
     Value<String?>? syncFileName,
+    Value<String>? source,
+    Value<String?>? sourceUrl,
+    Value<String?>? siteName,
     Value<int>? rowid,
   }) {
     return BooksTableCompanion(
@@ -571,6 +707,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
       importedAt: importedAt ?? this.importedAt,
       lastReadAt: lastReadAt ?? this.lastReadAt,
       syncFileName: syncFileName ?? this.syncFileName,
+      source: source ?? this.source,
+      sourceUrl: sourceUrl ?? this.sourceUrl,
+      siteName: siteName ?? this.siteName,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -608,6 +747,15 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
     if (syncFileName.present) {
       map['sync_file_name'] = Variable<String>(syncFileName.value);
     }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (sourceUrl.present) {
+      map['source_url'] = Variable<String>(sourceUrl.value);
+    }
+    if (siteName.present) {
+      map['site_name'] = Variable<String>(siteName.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -627,6 +775,9 @@ class BooksTableCompanion extends UpdateCompanion<BooksTableData> {
           ..write('importedAt: $importedAt, ')
           ..write('lastReadAt: $lastReadAt, ')
           ..write('syncFileName: $syncFileName, ')
+          ..write('source: $source, ')
+          ..write('sourceUrl: $sourceUrl, ')
+          ..write('siteName: $siteName, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1804,6 +1955,9 @@ typedef $$BooksTableTableCreateCompanionBuilder =
       required DateTime importedAt,
       Value<DateTime?> lastReadAt,
       Value<String?> syncFileName,
+      Value<String> source,
+      Value<String?> sourceUrl,
+      Value<String?> siteName,
       Value<int> rowid,
     });
 typedef $$BooksTableTableUpdateCompanionBuilder =
@@ -1818,6 +1972,9 @@ typedef $$BooksTableTableUpdateCompanionBuilder =
       Value<DateTime> importedAt,
       Value<DateTime?> lastReadAt,
       Value<String?> syncFileName,
+      Value<String> source,
+      Value<String?> sourceUrl,
+      Value<String?> siteName,
       Value<int> rowid,
     });
 
@@ -1940,6 +2097,21 @@ class $$BooksTableTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceUrl => $composableBuilder(
+    column: $table.sourceUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get siteName => $composableBuilder(
+    column: $table.siteName,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> readingProgressTableRefs(
     Expression<bool> Function($$ReadingProgressTableTableFilterComposer f) f,
   ) {
@@ -2049,6 +2221,21 @@ class $$BooksTableTableOrderingComposer
     column: $table.syncFileName,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceUrl => $composableBuilder(
+    column: $table.sourceUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get siteName => $composableBuilder(
+    column: $table.siteName,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BooksTableTableAnnotationComposer
@@ -2101,6 +2288,15 @@ class $$BooksTableTableAnnotationComposer
     column: $table.syncFileName,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceUrl =>
+      $composableBuilder(column: $table.sourceUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get siteName =>
+      $composableBuilder(column: $table.siteName, builder: (column) => column);
 
   Expression<T> readingProgressTableRefs<T extends Object>(
     Expression<T> Function($$ReadingProgressTableTableAnnotationComposer a) f,
@@ -2196,6 +2392,9 @@ class $$BooksTableTableTableManager
                 Value<DateTime> importedAt = const Value.absent(),
                 Value<DateTime?> lastReadAt = const Value.absent(),
                 Value<String?> syncFileName = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sourceUrl = const Value.absent(),
+                Value<String?> siteName = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BooksTableCompanion(
                 id: id,
@@ -2208,6 +2407,9 @@ class $$BooksTableTableTableManager
                 importedAt: importedAt,
                 lastReadAt: lastReadAt,
                 syncFileName: syncFileName,
+                source: source,
+                sourceUrl: sourceUrl,
+                siteName: siteName,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -2222,6 +2424,9 @@ class $$BooksTableTableTableManager
                 required DateTime importedAt,
                 Value<DateTime?> lastReadAt = const Value.absent(),
                 Value<String?> syncFileName = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> sourceUrl = const Value.absent(),
+                Value<String?> siteName = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BooksTableCompanion.insert(
                 id: id,
@@ -2234,6 +2439,9 @@ class $$BooksTableTableTableManager
                 importedAt: importedAt,
                 lastReadAt: lastReadAt,
                 syncFileName: syncFileName,
+                source: source,
+                sourceUrl: sourceUrl,
+                siteName: siteName,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

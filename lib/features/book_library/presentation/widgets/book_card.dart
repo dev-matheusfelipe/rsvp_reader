@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../database/app_database.dart';
+import '../../../../database/tables/book_source.dart';
 import '../providers/book_library_provider.dart';
 
 class BookCard extends ConsumerWidget {
@@ -16,6 +17,23 @@ class BookCard extends ConsumerWidget {
     required this.onLongPress,
     super.key,
   });
+
+  /// For articles we prefer the site name over the (often empty) author
+  /// field — it's the clearer attribution for web content.
+  String? get _subtitle {
+    if (book.source == BookSource.article) {
+      final site = book.siteName;
+      if (site != null && site.isNotEmpty) return site;
+      final author = book.author;
+      if (author != null && author.isNotEmpty) return author;
+      final url = book.sourceUrl;
+      if (url != null && url.isNotEmpty) {
+        return Uri.tryParse(url)?.host ?? url;
+      }
+      return null;
+    }
+    return book.author;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -44,7 +62,9 @@ class BookCard extends ConsumerWidget {
                       color: theme.colorScheme.primary.withAlpha(30),
                       child: Center(
                         child: Icon(
-                          Icons.menu_book_rounded,
+                          book.source == BookSource.article
+                              ? Icons.article_rounded
+                              : Icons.menu_book_rounded,
                           size: 48,
                           color: theme.colorScheme.primary.withAlpha(128),
                         ),
@@ -66,9 +86,9 @@ class BookCard extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    if (book.author != null)
+                    if (_subtitle != null)
                       Text(
-                        book.author!,
+                        _subtitle!,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withAlpha(153),
                         ),

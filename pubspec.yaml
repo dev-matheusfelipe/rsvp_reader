@@ -31,6 +31,12 @@ dependencies:
   epub_pro: ^5.6.0
   html: ^0.15.5
 
+  # Web article import (readability-style extractor is in core/utils)
+  http: ^1.2.2
+
+  # Share-sheet target: accept URLs shared from browsers and other apps.
+  receive_sharing_intent: ^1.8.1
+
   # Database
   drift: ^2.24.0
   sqlite3_flutter_libs: ^0.5.32

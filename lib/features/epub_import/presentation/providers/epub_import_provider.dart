@@ -1,7 +1,5 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -10,7 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/di/providers.dart';
 import '../../../../core/utils/sync_file_name.dart';
-import '../../../../database/app_database.dart';
+import '../../../book_library/data/services/book_persistence.dart';
 import '../../../library_sync/presentation/providers/library_sync_provider.dart';
 import '../../data/services/epub_extraction_service.dart';
 
@@ -82,9 +80,10 @@ class EpubImportNotifier extends StateNotifier<ImportState> {
         return;
       }
 
-      // 2. Save EPUB file to app storage
-      final appDir = await getApplicationDocumentsDirectory();
+      // Pre-generate the book id so the on-disk filename matches the DB row.
       final bookId = const Uuid().v4();
+
+      final appDir = await getApplicationDocumentsDirectory();
       final booksDir = Directory('${appDir.path}/${AppConstants.booksSubdir}');
       if (!booksDir.existsSync()) {
         await booksDir.create(recursive: true);
@@ -92,46 +91,22 @@ class EpubImportNotifier extends StateNotifier<ImportState> {
       final savedPath = '${booksDir.path}/$bookId.epub';
       await File(savedPath).writeAsBytes(bytes);
 
-      // 3. Insert book metadata into database. We keep the user's filename
-      // for the sync folder (disambiguated against existing books) so the
-      // files there are human-browsable.
+      // We keep the user's filename for the sync folder (disambiguated
+      // against existing books) so the files there are human-browsable.
       final booksDao = _ref.read(booksDaoProvider);
       final syncFileName = await uniqueSyncFileName(
         desired: pickedName,
         booksDao: booksDao,
       );
-      await booksDao.insertBook(BooksTableCompanion.insert(
-        id: bookId,
-        title: parsedBook.title,
-        author: Value(parsedBook.author),
-        filePath: savedPath,
-        coverImage: Value(parsedBook.coverImage),
-        totalWords: Value(parsedBook.totalWords),
-        chapterCount: Value(parsedBook.chapters.length),
-        importedAt: DateTime.now(),
-        syncFileName: Value(syncFileName),
-      ));
 
-      // 4. Cache tokenized words per chapter
-      final tokensDao = _ref.read(cachedTokensDaoProvider);
-      for (int i = 0; i < parsedBook.chapters.length; i++) {
-        final chapter = parsedBook.chapters[i];
-        final tokensJson = jsonEncode(
-          chapter.tokens.map((t) => t.toJson()).toList(),
-        );
-        await tokensDao.insertChapterTokens(CachedTokensTableCompanion.insert(
-          bookId: bookId,
-          chapterIndex: i,
-          chapterTitle: Value(chapter.title),
-          tokensJson: tokensJson,
-          wordCount: chapter.tokens.length,
-          paragraphCount: Value(
-            chapter.tokens.isEmpty
-                ? 0
-                : chapter.tokens.last.paragraphIndex + 1,
-          ),
-        ));
-      }
+      await persistParsedBook(
+        book: parsedBook,
+        booksDao: booksDao,
+        tokensDao: _ref.read(cachedTokensDaoProvider),
+        id: bookId,
+        filePath: savedPath,
+        syncFileName: syncFileName,
+      );
 
       // Do NOT create a reading_progress row here — the engine treats a
       // missing row as "not started" and defaults to (0, 0, defaultWpm) on

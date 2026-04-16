@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
 
+import 'book_source.dart';
+
 class BooksTable extends Table {
   TextColumn get id => text()();
   TextColumn get title => text()();
@@ -16,6 +18,17 @@ class BooksTable extends Table {
   /// collisions) instead of the UUID so the folder is browsable.
   /// Null for books imported before the sync-filename feature landed.
   TextColumn get syncFileName => text().nullable()();
+
+  /// Origin of the content. See [BookSource] for the allowed values.
+  /// Drives library tab filtering and whether the row participates in EPUB sync.
+  TextColumn get source => text().withDefault(const Constant(BookSource.epub))();
+
+  /// For `source = article`: the URL it was imported from.
+  TextColumn get sourceUrl => text().nullable()();
+
+  /// For `source = article`: the site name (extracted by readability), used
+  /// as a subtitle/attribution in the library card.
+  TextColumn get siteName => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

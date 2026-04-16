@@ -29,7 +29,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -39,6 +39,11 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 3) {
             await m.createTable(syncImportFailuresTable);
+          }
+          if (from < 4) {
+            await m.addColumn(booksTable, booksTable.source);
+            await m.addColumn(booksTable, booksTable.sourceUrl);
+            await m.addColumn(booksTable, booksTable.siteName);
           }
         },
       );
