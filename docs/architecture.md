@@ -1,66 +1,130 @@
-# Arquitetura
+# Architecture
 
-## Padrao
+## Pattern
 
-Feature-based Clean Architecture com camadas internas por feature:
-- `domain/entities/` — modelos puros (freezed ou plain Dart)
-- `data/` — services, repositories impl
-- `presentation/` — providers (Riverpod), screens, widgets
+Feature-based Clean Architecture with internal layers per feature:
 
-## Features e responsabilidades
+- `domain/entities/` — pure models (freezed or plain Dart)
+- `data/` — services and repository implementations
+- `presentation/` — providers (Riverpod), screens, and widgets
+
+---
+
+## Features and Responsibilities
 
 ### book_library
-Tela principal. Grid de livros importados com capa, titulo, progresso. FAB para importar EPUB. Stream reativo do DB (`watchAllBooks`).
+Main screen. Displays a grid of imported books with cover, title, and progress. Includes a FAB to import EPUB files. Uses a reactive DB stream (`watchAllBooks`).
+
+---
 
 ### epub_import
-Pipeline: EPUB bytes → `epub_pro` → capitulos → `HtmlStripper` → `TextTokenizer` → `List<WordToken>` → cache no SQLite.
+Pipeline:
 
-Cada `WordToken` ja tem `orpIndex` e `timingMultiplier` pre-calculados. Isso garante zero computacao no loop do RSVP.
+EPUB bytes → `epub_pro` → chapters → `HtmlStripper` → `TextTokenizer` → `List<WordToken>` → cached in SQLite
 
-`HtmlStripper` mantem 3 conjuntos de tags: `_blockTags` (geram quebra de paragrafo), `_breakTags` (`br`/`hr`, geram quebra de linha) e `_skipTags` (`style`, `script`, `noscript`, `head`, `meta`, `link`, `title`, `object`, `embed`, `svg`, `iframe`, `template` — subtree inteira ignorada para nao vazar CSS/JS no texto).
+Each `WordToken` already includes precomputed `orpIndex` and `timingMultiplier`, ensuring zero computation during the RSVP loop.
+
+`HtmlStripper` maintains three tag sets:
+
+- `_blockTags` — generate paragraph breaks  
+- `_breakTags` — (`br`, `hr`) generate line breaks  
+- `_skipTags` — (`style`, `script`, `noscript`, `head`, `meta`, `link`, `title`, `object`, `embed`, `svg`, `iframe`, `template`) — entire subtree is ignored to prevent CSS/JS leakage into the text  
+
+---
 
 ### rsvp_reader
-Feature central. Contem:
-- **RsvpEngineNotifier** (`rsvp_engine_provider.dart`): motor Ticker-based. Controla play/pause/seek/speed/ramp-up e o `ReaderMode` (rsvp/scroll/ereader). `enterEreaderMode`/`exitEreaderMode`/`toggleEreaderMode` alternam o terceiro modo. Salva progresso no pause e ao entrar no ereader.
-- **RsvpWordDisplay** (`rsvp_word_display.dart`): renderiza palavra com ORP via RichText + TextSpan. Auto-scale para palavras longas. Posicao horizontal/vertical configuravel. Renderiza opcionalmente uma **focus line** abaixo da palavra (full width, edge-to-edge) — modo focus puro ou focus + barra de progresso.
-- **ContextScrollView** (`context_scroll_view.dart`): modo scroll. Lista virtualizada de todos os capitulos (headers + paragrafos). Highlight da palavra atual via "pill" arredondada com glow sutil. Scroll atualiza posicao via ValueNotifier local (nao Riverpod) e usa **velocity-based stepping**: word/sentence/paragraph dependendo da velocidade do scroll. Sync com engine so no scroll end. Aceita `showHighlight: false` para servir tambem ao modo ereader (sem pill, sem tap-to-seek).
-- **RsvpControls** (`rsvp_controls.dart`): play/pause, skip, seek slider com **marcadores de capitulo** (visual-only via IgnorePointer) e value indicator mostrando titulo do capitulo durante drag, WPM +/-, link para lista de capitulos. Escondido em modo ereader.
-- **DisplaySettingsPanel** (`display_settings_panel.dart`): widget compartilhado com TODAS as configuracoes de display/leitura. Aceita `bookId` opcional — se presente, atualiza o engine ao vivo. Fonte unica de verdade.
-- **ReaderSettingsSheet** (`reader_settings_sheet.dart`): bottom sheet (DraggableScrollableSheet) que envolve `DisplaySettingsPanel(bookId: ...)`.
-- **ChapterListSheet** (`chapter_list_sheet.dart`): bottom sheet com lista de capitulos para navegacao.
+Core feature. Contains:
+
+- **RsvpEngineNotifier** (`rsvp_engine_provider.dart`)  
+  Ticker-based engine. Controls play/pause/seek/speed/ramp-up and `ReaderMode` (rsvp/scroll/ereader).  
+  Methods like `enterEreaderMode`, `exitEreaderMode`, and `toggleEreaderMode` manage the third mode.  
+  Saves reading progress on pause and when entering ereader mode.
+
+- **RsvpWordDisplay** (`rsvp_word_display.dart`)  
+  Renders words with ORP using `RichText` + `TextSpan`.  
+  Supports auto-scaling for long words and configurable positioning.  
+  Optionally renders a **focus line** below the word (full-width, edge-to-edge), either standalone or combined with a progress bar.
+
+- **ContextScrollView** (`context_scroll_view.dart`)  
+  Scroll mode. Virtualized list of all chapters (headers + paragraphs).  
+  Highlights the current word with a rounded "pill" and subtle glow.  
+  Uses a local `ValueNotifier` (not Riverpod) for scroll updates and implements **velocity-based stepping** (word/sentence/paragraph).  
+  Syncs with the engine only when scrolling ends.  
+  Supports `showHighlight: false` for ereader mode (no pill, no tap-to-seek).
+
+- **RsvpControls** (`rsvp_controls.dart`)  
+  Includes play/pause, skip, seek slider with **chapter markers** (visual-only via `IgnorePointer`),  
+  and a value indicator showing chapter title during drag.  
+  Also includes WPM controls and chapter navigation.  
+  Hidden in ereader mode.
+
+- **DisplaySettingsPanel** (`display_settings_panel.dart`)  
+  Shared widget containing all display/reading settings.  
+  Accepts optional `bookId` — if provided, updates the engine in real time.  
+  Serves as the single source of truth.
+
+- **ReaderSettingsSheet** (`reader_settings_sheet.dart`)  
+  Bottom sheet (`DraggableScrollableSheet`) wrapping `DisplaySettingsPanel(bookId: ...)`.
+
+- **ChapterListSheet** (`chapter_list_sheet.dart`)  
+  Bottom sheet listing chapters for navigation.
+
+---
 
 ### settings
-Tela full-screen que envolve `DisplaySettingsPanel()` (sem bookId) + secao About. Visualmente identica ao bottom sheet do leitor (mesmas cores do `DisplaySettings`, mesmos componentes).
+Full-screen settings page that wraps `DisplaySettingsPanel()` (without `bookId`) plus an About section.  
+Visually identical to the reader bottom sheet (same colors and components from `DisplaySettings`).
+
+---
 
 ## State Management
 
-**Riverpod 2 sem code generation** (evita conflito source_gen com drift_dev).
+**Riverpod 2 without code generation** (avoids `source_gen` conflicts with `drift_dev`).
 
-Providers principais:
-- `appDatabaseProvider` — instancia do Drift DB, overridden no main
+Main providers:
+
+- `appDatabaseProvider` — Drift DB instance, overridden in `main`
 - `booksDaoProvider`, `readingProgressDaoProvider`, `cachedTokensDaoProvider` — DAOs
-- `rsvpEngineProvider(bookId)` — StateNotifierProvider.family, motor RSVP por livro
-- `displaySettingsProvider` — DisplaySettings persistidas via SharedPreferences
-- `bookLibraryProvider` — StreamProvider com lista de livros
-- `epubImportProvider` — StateNotifier para fluxo de import
+- `rsvpEngineProvider(bookId)` — `StateNotifierProvider.family`, RSVP engine per book
+- `displaySettingsProvider` — persisted `DisplaySettings` via `SharedPreferences`
+- `bookLibraryProvider` — `StreamProvider` with book list
+- `epubImportProvider` — `StateNotifier` for import flow
+
+---
 
 ## Database (Drift/SQLite)
 
-3 tabelas:
+3 tables:
+
 - `BooksTable` — metadata (id, title, author, filePath, coverImage, totalWords, chapterCount, importedAt, lastReadAt)
-- `ReadingProgressTable` — posicao por livro (bookId PK, chapterIndex, wordIndex, wpm, updatedAt)
-- `CachedTokensTable` — tokens pre-processados por capitulo (bookId, chapterIndex, chapterTitle, tokensJson, wordCount, paragraphCount)
+- `ReadingProgressTable` — per-book position (bookId PK, chapterIndex, wordIndex, wpm, updatedAt)
+- `CachedTokensTable` — preprocessed tokens per chapter (bookId, chapterIndex, chapterTitle, tokensJson, wordCount, paragraphCount)
 
-Tokens sao serializados como JSON no SQLite. ~2-3MB para livro de 100K palavras.
+Tokens are serialized as JSON in SQLite.  
+Approximately 2–3MB for a 100K-word book.
 
-## Fluxo de dados
+---
 
-```
-Import: EPUB file → epub_pro → HtmlStripper → TextTokenizer → WordToken[] → SQLite cache
-Leitura: SQLite cache → Chapter[] → RsvpEngine (Ticker) → RsvpWordDisplay / ContextScrollView
-Config:  SharedPreferences ↔ DisplaySettingsNotifier ↔ RsvpEngine.displaySettings
-```
+## Data Flow
+
+**Import Flow:**
+EPUB file → epub_pro → HtmlStripper → TextTokenizer → WordToken[] → SQLite cache
+
+**Reading Flow:**
+SQLite cache → Chapter[] → RsvpEngine (Ticker) → RsvpWordDisplay / ContextScrollView
+
+**Configuration Flow:**
+SharedPreferences ↔ DisplaySettingsNotifier ↔ RsvpEngine.displaySettings
+
+---
 
 ## i18n
 
-ARB files em `lib/l10n/` (app_en.arb, app_pt.arb). Gerados em `lib/l10n/generated/`. Import: `import '...l10n/generated/app_localizations.dart'`. Usar `AppLocalizations.of(context)!`.
+Localization is managed using ARB files located in `lib/l10n/` (`app_en.arb`, `app_pt.arb`).
+
+Generated files are located in `lib/l10n/generated/`.
+
+Import:
+
+```dart
+import '...l10n/generated/app_localizations.dart';
